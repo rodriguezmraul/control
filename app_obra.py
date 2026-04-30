@@ -1,19 +1,18 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import date
 import smtplib
-from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 import io
 
-st.title("📋 Seguimiento de Obra")
+# Configuración de la página e imagen de logo [cite: 10]
+st.set_page_config(page_title="Seguimiento de Obra", page_icon="🏗️")
+st.title("🏗️ App Seguimiento de Obra")
+st.subheader("Fundación Masaveu - Salesianos Oviedo")
 
-# Logo (Requisito RA4CEb) [cite: 10]
-try:
-    st.image("logo.png", width=200)
-except:
-    st.write("Sube el logo.png a GitHub para cumplir con el formato.")
-
-# Tareas completas del proyecto [cite: 11, 12, 13, 14, 15, 16, 29, 33]
+# 1. Selección de Tareas [cite: 11, 12-23, 29-33]
 tareas = [
     "Trazado y marcado de cajas, tubos y cuadros",
     "Ejecución rozas en paredes y techos",
@@ -21,77 +20,101 @@ tareas = [
     "Colocación tubos y conductos",
     "Tendido de cables",
     "Identificación y etiquetado",
+    "Conexionado de cables en bornes o regletas",
+    "Instalación y conexionado de mecanismos",
+    "Fijación de carril DIN y mecanismos en cuadro eléctrico",
+    "Cableado interno del cuadro eléctrico",
+    "Configuración de equipos domóticos y/o automáticos",
+    "Conexionado de sensores/actuadores de equipos domóticos/automáticos",
     "Pruebas de continuidad",
+    "Pruebas de aislamiento",
+    "Verificación de tierras",
+    "Programación del automatismo",
     "Pruebas de funcionamiento"
 ]
 
-# Estados del avance [cite: 34, 35, 36, 38, 39]
+# 2. Selección de Estado [cite: 34-40]
 estados = [
     "Avance de la tarea en torno al 25% aprox.",
     "Avance de la tarea en torno al 50% aprox.",
     "Avance de la tarea en torno al 75% aprox.",
     "OK, finalizado sin errores",
-    "Finalizado, pero con errores pendientes de corregir"
+    "Finalizado, pero con errores pendientes de corregir",
+    "Finalizado y corregidos los errores"
 ]
 
-# Inputs [cite: 41, 42]
-trabajador = st.text_input("Trabajador")
-fecha = st.date_input("Fecha")
-tarea = st.selectbox("Tarea", tareas)
-estado = st.selectbox("Estado", estados)
+# Formulario de entrada de datos
+with st.form("registro_obra"):
+    nombre_trabajador = st.text_input("Nombre del trabajador [cite: 41]")
+    fecha_envio = st.date_input("Fecha de envío [cite: 42]", date.today())
+    tarea_seleccionada = st.selectbox("Seleccione la tarea [cite: 11]", tareas)
+    estado_seleccionado = st.selectbox("Estado de la tarea [cite: 34]", estados)
+    
+    boton_registro = st.form_submit_button("Registrar Tarea")
 
-# Crear el DataFrame con el registro actual
-nuevo_registro = {
-    "Tarea": [tarea],
-    "Estado": [estado],
-    "Trabajador": [trabajador],
-    "Fecha": [fecha.strftime("%d/%m/%Y")]
-}
-df_actual = pd.DataFrame(nuevo_registro)
+# Inicializar historial en la sesión (temporal, dura 2 horas en Streamlit Cloud) 
+if 'historial' not in st.session_state:
+    st.session_state.historial = pd.DataFrame(columns=["Fecha", "Trabajador", "Tarea", "Estado"])
 
-# --- SECCIÓN DE DESCARGA EXCEL (.xlsx) ---
-st.subheader("💾 Descargar Informe")
+if boton_registro:
+    nuevo_registro = {
+        "Fecha": fecha_envio,
+        "Trabajador": nombre_trabajador,
+        "Tarea": tarea_seleccionada,
+        "Estado": estado_seleccionado
+    }
+    st.session_state.historial = pd.concat([st.session_state.historial, pd.DataFrame([nuevo_registro])], ignore_index=True)
+    st.success("Registro añadido localmente.")
 
-# Usamos un buffer de memoria para generar el Excel real (RA3CEb) 
+# Mostrar tabla de registros
+st.write("### Registros actuales")
+st.dataframe(st.session_state.historial)
+
+# 3. Generación de Excel (.xlsx) [cite: 43]
 buffer = io.BytesIO()
-with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    df_actual.to_excel(writer, index=False, sheet_name='Informe')
+with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+    st.session_state.historial.to_excel(writer, index=False, sheet_name='Seguimiento')
 
+# Botón para descargar el Excel al móvil/PC [cite: 43]
 st.download_button(
-    label="Descargar archivo .xlsx",
+    label="Descargar Excel (.xlsx)",
     data=buffer.getvalue(),
-    file_name=f"Informe_{trabajador}.xlsx",
+    file_name=f"seguimiento_obra_{date.today()}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-# --- SECCIÓN DE CORREO (RA4CEd) ---
-st.subheader("📧 Enviar informe por correo")
-correo_destino = st.text_input("Correo destino (Email de la profesora)", value="profesora@ejemplo.com")
+# 4. Envío por Correo Electrónico [cite: 44, 45]
+st.divider()
+st.subheader("Envío por Email")
+st.info("Nota: Para el envío, configura los 'Secrets' en Streamlit con tu contraseña de aplicación.")
 
-if st.button("Enviar correo"):
-    if trabajador and correo_destino:
-        try:
-            # Crear el mensaje
-            msg = EmailMessage()
-            msg["Subject"] = f"Informe de Obra - {trabajador}"
-            msg["From"] = st.secrets["email_user"] # Usa Secrets para seguridad 
-            msg["To"] = correo_destino
-            msg.set_content(f"Se adjunta el reporte de obra de {trabajador} con fecha {fecha}.")
+email_destino = st.text_input("Email Destino (Profesora)", value="profesora@ejemplo.com")
 
-            # Adjuntar el Excel desde el buffer
-            msg.add_attachment(
-                buffer.getvalue(),
-                maintype="application",
-                subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                filename=f"Informe_{trabajador}.xlsx"
-            )
+if st.button("Enviar Excel por Correo"):
+    try:
+        # Recuperar credenciales de Streamlit Secrets 
+        user_email = st.secrets["EMAIL_USER"]
+        password = st.secrets["EMAIL_PASSWORD"] # Contraseña específica de app 
 
-            # Envío seguro (Requiere Secrets en Streamlit) [cite: 44, 46]
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-                smtp.login(st.secrets["email_user"], st.secrets["email_password"])
-                smtp.send_message(msg)
-            st.success("✅ Correo enviado correctamente")
-        except Exception as e:
-            st.error(f"Error al enviar: Verifique los Secrets en Streamlit")
-    else:
-        st.warning("Complete el nombre y el correo de destino.")
+        msg = MIMEMultipart()
+        msg['From'] = user_email
+        msg['To'] = email_destino
+        msg['Subject'] = f"Seguimiento Obra - {nombre_trabajador}"
+
+        # Adjuntar archivo
+        part = MIMEBase('application', "octet-stream")
+        part.set_payload(buffer.getvalue())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f'attachment; filename="reporte.xlsx"')
+        msg.attach(part)
+
+        # Configuración servidor SMTP (ejemplo Gmail)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(user_email, password)
+        server.send_message(msg)
+        server.quit()
+        st.success("Correo enviado con éxito.")
+    except Exception as e:
+        st.error(f"Error al enviar: {e}")
+        
