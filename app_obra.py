@@ -1,63 +1,97 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+import smtplib
+from email.message import EmailMessage
 import io
-from datetime import date
 
-# Título y Logo (Requisito: Logo de la empresa)
-st.title("📋 Seguimiento de Obra - Fundación Masaveu")
+st.title("📋 Seguimiento de Obra")
+
+# Logo (Requisito RA4CEb) [cite: 10]
 try:
     st.image("logo.png", width=200)
 except:
-    st.info("Sube 'logo.png' a GitHub para visualizar el logo oficial.")
+    st.write("Sube el logo.png a GitHub para cumplir con el formato.")
 
-# Listas de tareas y estados según el PDF
+# Tareas completas del proyecto [cite: 11, 12, 13, 14, 15, 16, 29, 33]
 tareas = [
-    "Trazado y marcado de cajas, tubos y cuadros", "Ejecución rozas en paredes y techos",
-    "Montaje de soportes", "Colocación tubos y conductos", "Tendido de cables",
-    "Identificación y etiquetado", "Conexionado de cables en bornes o regletas",
-    "Instalación y conexionado de mecanismos", "Fijación de carril DIN y mecanismos en cuadro eléctrico",
-    "Cableado interno del cuadro eléctrico", "Configuración de equipos domóticos",
-    "Pruebas de continuidad", "Pruebas de funcionamiento"
+    "Trazado y marcado de cajas, tubos y cuadros",
+    "Ejecución rozas en paredes y techos",
+    "Montaje de soportes",
+    "Colocación tubos y conductos",
+    "Tendido de cables",
+    "Identificación y etiquetado",
+    "Pruebas de continuidad",
+    "Pruebas de funcionamiento"
 ]
 
+# Estados del avance [cite: 34, 35, 36, 38, 39]
 estados = [
-    "Avance de la tarea en torno al 25% aprox.", "Avance de la tarea en torno al 50% aprox.",
-    "Avance de la tarea en torno al 75% aprox.", "OK, finalizado sin errores",
-    "Finalizado, pero con errores pendientes de corregir", "Finalizado y corregidos los errores"
+    "Avance de la tarea en torno al 25% aprox.",
+    "Avance de la tarea en torno al 50% aprox.",
+    "Avance de la tarea en torno al 75% aprox.",
+    "OK, finalizado sin errores",
+    "Finalizado, pero con errores pendientes de corregir"
 ]
 
-# Formulario (Requisito: Nombre del trabajador y Fecha)
-trabajador = st.text_input("Nombre del trabajador")
-fecha = st.date_input("Fecha de envío", value=date.today())
-tarea_sel = st.selectbox("Selecciona tarea", tareas)
-avance_sel = st.selectbox("Estado", estados)
+# Inputs [cite: 41, 42]
+trabajador = st.text_input("Trabajador")
+fecha = st.date_input("Fecha")
+tarea = st.selectbox("Tarea", tareas)
+estado = st.selectbox("Estado", estados)
 
-# GENERACIÓN Y DESCARGA EN EXCEL (.xlsx)
-if st.button("Preparar Informe Excel"):
-    if trabajador:
-        # 1. Crear el DataFrame con los datos actuales
-        nuevo_dato = {
-            "Trabajador": [trabajador],
-            "Fecha": [fecha.strftime("%d/%m/%Y")],
-            "Tarea": [tarea_sel],
-            "Estado": [avance_sel]
-        }
-        df = pd.DataFrame(nuevo_dato)
+# Crear el DataFrame con el registro actual
+nuevo_registro = {
+    "Tarea": [tarea],
+    "Estado": [estado],
+    "Trabajador": [trabajador],
+    "Fecha": [fecha.strftime("%d/%m/%Y")]
+}
+df_actual = pd.DataFrame(nuevo_registro)
 
-        # 2. Crear un buffer de memoria (esto evita errores en Streamlit Cloud)
-        output = io.BytesIO()
-        
-        # 3. Escribir el Excel usando xlsxwriter (Motor para .xlsx real)
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Seguimiento')
-        
-        # 4. Botón de descarga final con el MIME Type correcto
-        st.success("✅ Informe listo.")
-        st.download_button(
-            label="📥 Descargar archivo .xlsx",
-            data=output.getvalue(),
-            file_name=f"Informe_{trabajador}_{fecha}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+# --- SECCIÓN DE DESCARGA EXCEL (.xlsx) ---
+st.subheader("💾 Descargar Informe")
+
+# Usamos un buffer de memoria para generar el Excel real (RA3CEb) 
+buffer = io.BytesIO()
+with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+    df_actual.to_excel(writer, index=False, sheet_name='Informe')
+
+st.download_button(
+    label="Descargar archivo .xlsx",
+    data=buffer.getvalue(),
+    file_name=f"Informe_{trabajador}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+# --- SECCIÓN DE CORREO (RA4CEd) ---
+st.subheader("📧 Enviar informe por correo")
+correo_destino = st.text_input("Correo destino (Email de la profesora)", value="profesora@ejemplo.com")
+
+if st.button("Enviar correo"):
+    if trabajador and correo_destino:
+        try:
+            # Crear el mensaje
+            msg = EmailMessage()
+            msg["Subject"] = f"Informe de Obra - {trabajador}"
+            msg["From"] = st.secrets["email_user"] # Usa Secrets para seguridad 
+            msg["To"] = correo_destino
+            msg.set_content(f"Se adjunta el reporte de obra de {trabajador} con fecha {fecha}.")
+
+            # Adjuntar el Excel desde el buffer
+            msg.add_attachment(
+                buffer.getvalue(),
+                maintype="application",
+                subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename=f"Informe_{trabajador}.xlsx"
+            )
+
+            # Envío seguro (Requiere Secrets en Streamlit) [cite: 44, 46]
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                smtp.login(st.secrets["email_user"], st.secrets["email_password"])
+                smtp.send_message(msg)
+            st.success("✅ Correo enviado correctamente")
+        except Exception as e:
+            st.error(f"Error al enviar: Verifique los Secrets en Streamlit")
     else:
-        st.error("Por favor, introduce el nombre del trabajador.")
+        st.warning("Complete el nombre y el correo de destino.")
