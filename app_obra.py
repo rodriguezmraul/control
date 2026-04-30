@@ -63,34 +63,9 @@ if st.button("Guardar"):
     st.success("Registro guardado")
 
 # Descargar
-import io
-
-# ... (resto de tu código anterior)
-
-if st.button("Generar Registro"):
-    # Creamos el diccionario con los datos actuales
-    datos = {
-        "Trabajador": [nombre],
-        "Fecha": [fecha_envio.strftime("%d/%m/%Y")],
-        "Tarea": [tarea],
-        "Estado": [estado]
-    }
-    df = pd.DataFrame(datos)
-    
-    # Creamos un buffer en memoria para el archivo Excel
-    buffer = io.BytesIO()
-    
-    # Usamos el motor xlsxwriter para crear el Excel
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Seguimiento')
-    
-    # Botón de descarga real
-    st.download_button(
-        label="Descargar Informe en Excel",
-        data=buffer.getvalue(),
-        file_name=f"seguimiento_{nombre}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+if st.button("Descargar Excel"):
+    df = pd.read_excel("datos.xlsx")
+    st.download_button("Descargar archivo", df.to_csv(), "datos.csv")
 
 # Enviar por correo
 st.subheader("📧 Enviar informe")
@@ -116,4 +91,3 @@ if st.button("Enviar correo"):
 
     except:
         st.error("Error al enviar correo")
-      
